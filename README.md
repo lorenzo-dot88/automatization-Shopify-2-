@@ -1,0 +1,373 @@
+[index-2.html](https://github.com/user-attachments/files/29843540/index-2.html)
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cuadre · Shopify → Sage 50</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root{
+  --paper:#EEF0EA; --paper-2:#E4E7DE; --ink:#16211B; --ink-soft:#586158;
+  --line:#CDD3C7; --line-strong:#B6BEAE;
+  --pine:#1C5D43; --pine-deep:#164a36; --mint:#2E9E6E; --amber:#B9791A;
+  --shadow:0 1px 0 #fff, 0 2px 8px rgba(22,33,27,.06);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:Inter,system-ui,sans-serif;
+  font-size:15px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:28px 28px;
+  background-position:-1px -1px;
+}
+.wrap{max-width:760px;margin:0 auto;padding:48px 20px 80px}
+.mono{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums}
+
+/* header */
+.brand{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.brand h1{font-family:"Space Grotesk";font-weight:700;font-size:34px;letter-spacing:-.02em;margin:0}
+.brand .tag{font-family:"JetBrains Mono";font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--pine);
+  border:1px solid var(--pine);border-radius:2px;padding:3px 7px}
+.lede{color:var(--ink-soft);max-width:52ch;margin:0 0 32px}
+.lede b{color:var(--ink);font-weight:600}
+
+/* dropzone as a spreadsheet fragment */
+.sheet{border:1px solid var(--line-strong);border-radius:6px;background:#fbfcfa;box-shadow:var(--shadow);overflow:hidden}
+.colhead{display:grid;grid-template-columns:34px repeat(4,1fr);background:var(--paper-2);border-bottom:1px solid var(--line-strong);
+  font-family:"JetBrains Mono";font-size:11px;color:var(--ink-soft)}
+.colhead span{padding:5px 8px;border-right:1px solid var(--line);text-align:center}
+.colhead span:last-child{border-right:0}
+.drop{padding:40px 24px;text-align:center;cursor:pointer;transition:background .15s,box-shadow .15s;position:relative}
+.drop .rownum{position:absolute;left:0;top:0;bottom:0;width:34px;border-right:1px solid var(--line);
+  background:var(--paper-2);font-family:"JetBrains Mono";font-size:11px;color:var(--ink-soft);
+  display:flex;flex-direction:column;align-items:center;padding-top:8px;gap:14px}
+.drop.drag{background:#e7f2ec;box-shadow:inset 0 0 0 2px var(--mint)}
+.drop:focus-visible{outline:2px solid var(--pine);outline-offset:-4px}
+.drop .disk{width:44px;height:44px;margin:0 auto 14px;border-radius:50%;border:1.5px solid var(--pine);
+  display:flex;align-items:center;justify-content:center;color:var(--pine)}
+.drop .disk svg{width:22px;height:22px}
+.drop h2{font-family:"Space Grotesk";font-weight:600;font-size:18px;margin:0 0 4px}
+.drop p{margin:0;color:var(--ink-soft);font-size:13px}
+.drop .file{font-family:"JetBrains Mono";font-size:13px;color:var(--pine);margin-top:10px;word-break:break-all}
+
+/* params */
+.params{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0 8px}
+.cell{border:1px solid var(--line-strong);border-radius:5px;background:#fbfcfa;padding:11px 12px}
+.cell label{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:5px}
+.cell .in{display:flex;align-items:baseline;gap:4px}
+.cell input{font-family:"JetBrains Mono";font-size:20px;font-weight:500;border:0;background:transparent;width:100%;color:var(--ink);padding:0}
+.cell input:focus{outline:0}
+.cell .u{font-family:"JetBrains Mono";color:var(--ink-soft);font-size:14px}
+.hint{font-size:12px;color:var(--ink-soft);margin:0 2px 26px}
+
+.go{width:100%;border:0;border-radius:6px;background:var(--pine);color:#fff;font-family:"Space Grotesk";
+  font-weight:600;font-size:16px;padding:15px;cursor:pointer;transition:background .15s;letter-spacing:.01em}
+.go:hover{background:var(--pine-deep)}
+.go:disabled{background:var(--line-strong);color:#fff;cursor:not-allowed}
+
+/* results ledger */
+.ledger{margin-top:30px;border:1px solid var(--line-strong);border-radius:6px;background:#fbfcfa;box-shadow:var(--shadow);
+  overflow:hidden;display:none}
+.ledger.show{display:block;animation:rise .4s ease}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.ledger .lh{display:flex;justify-content:space-between;align-items:center;padding:13px 16px;background:var(--ink);color:var(--paper)}
+.ledger .lh .t{font-family:"Space Grotesk";font-weight:600}
+.ledger .lh .n{font-family:"JetBrains Mono";font-size:12px;color:#b9c4bb}
+.row{display:flex;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--line)}
+.row:last-of-type{border-bottom:0}
+.row .k{color:var(--ink-soft)}
+.row .v{font-family:"JetBrains Mono";font-weight:500}
+.row.hi .k{color:var(--ink);font-weight:600}
+.row.hi .v{color:var(--pine);font-weight:700;font-size:17px}
+.swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:8px;vertical-align:middle}
+.dl{padding:16px}
+.dl button{width:100%;border:0;border-radius:6px;background:var(--mint);color:#fff;font-family:"Space Grotesk";
+  font-weight:600;font-size:15px;padding:14px;cursor:pointer}
+.dl button:hover{background:#268a5f}
+.warn{background:#fbf3e2;border-top:1px solid #e8d9b4;color:#7a5a12;padding:10px 16px;font-size:12.5px}
+
+.foot{margin-top:26px;font-size:12px;color:var(--ink-soft);display:flex;align-items:center;gap:8px}
+.foot svg{width:14px;height:14px;color:var(--pine)}
+.err{display:none;margin-top:16px;border:1px solid #d9b4b4;background:#fbeaea;color:#7a2020;border-radius:6px;padding:12px 14px;font-size:13.5px}
+.err.show{display:block}
+@media(max-width:560px){.params{grid-template-columns:1fr}.brand h1{font-size:27px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand">
+    <h1>Cuadre</h1>
+    <span class="tag">Shopify → Sage 50</span>
+  </div>
+  <p class="lede">Suelta el export de pedidos de Shopify y descarga el Excel maestro con <b>IVA, comisiones, envíos e intracomunitarias</b> ya calculados. Todo se procesa <b>en tu navegador</b>: ningún dato sale de tu ordenador.</p>
+
+  <div class="sheet">
+    <div class="colhead"><span>#</span><span>TRIMESTRE</span><span>BASE 700</span><span>IVA 477</span><span>430</span></div>
+    <div class="drop" id="drop" role="button" tabindex="0" aria-label="Añadir el export de Shopify (.csv o .xlsx)">
+      <div class="rownum" aria-hidden="true"><span>1</span><span>2</span><span>3</span></div>
+      <div class="disk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4m0 0L8 8m4-4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke-linecap="round"/></svg></div>
+      <h2>Arrastra aquí el export de Shopify</h2>
+      <p>o pulsa para elegir el archivo · <span class="mono">.csv o .xlsx</span></p>
+      <div class="file" id="fileName"></div>
+    </div>
+  </div>
+
+  <div class="params">
+    <div class="cell"><label>IVA</label><div class="in"><input id="iva" class="mono" type="number" step="0.1" value="21"><span class="u">%</span></div></div>
+    <div class="cell"><label>Comisión Shopify</label><div class="in"><input id="com" class="mono" type="number" step="0.01" value="2.1"><span class="u">%</span></div></div>
+    <div class="cell"><label>Comisión fija</label><div class="in"><input id="fija" class="mono" type="number" step="0.01" value="0.30"><span class="u">€</span></div></div>
+  </div>
+  <p class="hint">Sobre el Total (producto + envío). El envío se computa por lo realmente cobrado (Total − Subtotal); si fue gratis, no genera IVA. Los pedidos <span class="mono">refunded</span> se excluyen de los cálculos.</p>
+
+  <button class="go" id="go" disabled>Generar Excel maestro</button>
+
+  <div class="err" id="err"></div>
+
+  <div class="ledger" id="ledger">
+    <div class="lh"><span class="t">Resumen del periodo</span><span class="n" id="lnum"></span></div>
+    <div class="row"><span class="k"><span class="swatch" style="background:#8fc98f"></span>Base imponible (700)</span><span class="v" id="r_base"></span></div>
+    <div class="row hi"><span class="k"><span class="swatch" style="background:#e8c552"></span>IVA a ingresar · Modelo 303</span><span class="v" id="r_iva"></span></div>
+    <div class="row"><span class="k"><span class="swatch" style="background:#e6a06a"></span>Comisiones Shopify</span><span class="v" id="r_com"></span></div>
+    <div class="row"><span class="k"><span class="swatch" style="background:#7fb3d5"></span>Neto recibido</span><span class="v" id="r_neto"></span></div>
+    <div class="row"><span class="k">Total facturado</span><span class="v" id="r_fact"></span></div>
+    <div class="row"><span class="k">Ventas intracomunitarias (UE no-ES)</span><span class="v" id="r_intra"></span></div>
+    <div class="row"><span class="k">Beneficio bruto (antes de gastos)</span><span class="v" id="r_benef"></span></div>
+    <div class="warn" id="warn"></div>
+    <div class="dl"><button id="download">Descargar SHOPIFY_SAGE50_MAESTRO.xlsx</button></div>
+  </div>
+
+  <div class="foot">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>
+    Tus datos no salen del navegador · sin servidor · procesado 100% local
+  </div>
+</div>
+
+<script>
+const EU = new Set(['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','SE','ES']);
+const OWN = 'ES';
+let rawRows=null, rawHeaders=null, built=null;
+
+const $ = id => document.getElementById(id);
+const drop=$('drop'), fileName=$('fileName'), go=$('go'), err=$('err');
+
+// ---- file intake ----
+drop.addEventListener('click',()=>{const i=document.createElement('input');i.type='file';i.accept='.csv,.xlsx,.xls,text/csv';i.onchange=e=>handle(e.target.files[0]);i.click();});
+drop.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();drop.click();}});
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag');}));
+drop.addEventListener('drop',e=>{if(e.dataTransfer.files.length)handle(e.dataTransfer.files[0]);});
+
+function showErr(m){err.textContent=m;err.classList.add('show');}
+function clearErr(){err.classList.remove('show');}
+
+function ingest(headers,rows,label){
+  rawHeaders=headers;
+  if(!rawHeaders.includes('Name')||!rawHeaders.includes('Total')){
+    showErr('No parece un export de pedidos de Shopify (faltan columnas como "Name" o "Total").');return;}
+  rawRows=rows;
+  fileName.textContent='✓ '+label+' · '+rawRows.length+' líneas';
+  go.disabled=false;
+}
+function handle(file){
+  clearErr(); $('ledger').classList.remove('show'); go.disabled=true;
+  if(!file){return;}
+  const name=file.name.toLowerCase();
+  if(/\.(xlsx|xls)$/.test(name)){
+    const rd=new FileReader();
+    rd.onload=e=>{
+      try{
+        const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+        if(!aoa.length){showErr('La hoja está vacía.');return;}
+        const headers=aoa[0].map(h=>String(h).trim());
+        const rows=aoa.slice(1).filter(r=>r.some(c=>c!=='')).map(r=>{const o={};headers.forEach((h,i)=>o[h]=r[i]==null?'':r[i]);return o;});
+        ingest(headers,rows,file.name);
+      }catch(err){showErr('No pude leer el Excel: '+err.message);}
+    };
+    rd.onerror=()=>showErr('Error al leer el archivo.');
+    rd.readAsArrayBuffer(file);
+  } else if(/\.csv$/.test(name)){
+    Papa.parse(file,{header:true,skipEmptyLines:'greedy',
+      complete:res=>{
+        if(!res.data||!res.data.length){showErr('El archivo está vacío o no se pudo leer.');return;}
+        ingest(res.meta.fields,res.data,file.name);
+      },
+      error:e=>showErr('Error al leer el CSV: '+e.message)
+    });
+  } else {
+    showErr('Formato no reconocido. Suelta el export de Shopify en .csv o .xlsx.');
+  }
+}
+
+// ---- helpers ----
+const numf = v => {
+  if(v==null||v==='')return 0;
+  let s=String(v).trim().replace(/[^0-9.,-]/g,'');
+  if(s.indexOf(',')>-1 && s.indexOf('.')>-1){
+    if(s.lastIndexOf(',')>s.lastIndexOf('.')) s=s.replace(/\./g,'').replace(',','.'); // 1.234,56 EU
+    else s=s.replace(/,/g,'');                                                        // 1,234.56 US
+  } else if(s.indexOf(',')>-1){ s=s.replace(',','.'); }                               // 134,00
+  const n=parseFloat(s); return isNaN(n)?0:n;
+};
+// Precisión completa en celda; el formato de Excel muestra 2 decimales. Así la suma de la columna = el total exacto.
+const round2 = n => n;
+const fixEnc = s => { try { return /[ÃÂ]/.test(s) ? decodeURIComponent(escape(s)) : s; } catch(e){ return s; } };
+function quarter(created){ if(!created)return{t:'',d:''}; const m=String(created); const y=m.slice(0,4),mo=+m.slice(5,7),da=m.slice(8,10); if(!y||!mo)return{t:'',d:''}; const q=Math.ceil(mo/3); return{t:q+'ºT/'+y.slice(2),d:da+'/'+m.slice(5,7)+'/'+y}; }
+
+// ---- build ----
+go.addEventListener('click',()=>{
+  clearErr();
+  try{ built = convert(); renderLedger(built); }
+  catch(e){ showErr('No pude procesar el archivo: '+e.message); }
+});
+
+function convert(){
+  const IVA=numf($('iva').value)/100, COM=numf($('com').value)/100, FIJA=numf($('fija').value);
+  const div=1+IVA;
+  const h=n=>rawHeaders.indexOf(n);
+  const iName=h('Name'), iStat=h('Financial Status'), iSub=h('Subtotal'), iTot=h('Total'),
+        iCre=h('Created at'), iCoun=h('Billing Country'),
+        iQty=h('Lineitem quantity'), iLn=h('Lineitem name'), iPr=h('Lineitem price'), iRef=h('Refunded Amount');
+
+  const calcHeaders=['TRIMESTRE','FECHA','BASE PROD (700)','IVA PROD (477.21)','TOTAL COBRADO (430)','BASE ENVÍO','IVA ENVÍO','COMISIÓN SHOPIFY','NETO RECIBIDO','INTRACOMUNITARIA','PAÍS UE'];
+  const pedidos=[calcHeaders.concat(rawHeaders)];
+
+  const byQuarter={}, byCountry={}, byProduct={};
+  let nOrders=0, tBaseP=0,tIvaP=0,tBaseE=0,tIvaE=0,tCom=0,tNeto=0,tSub=0,tRef=0,tIntraBase=0,tIntraTot=0;
+
+  rawRows.forEach(r=>{
+    const g=k=> r[rawHeaders[k]];
+    const status=(g(iStat)||'').toString().trim().toLowerCase();
+    const isOrderRow = status!==''; // primera línea del pedido lleva estado
+    const country=(g(iCoun)||'').toString().trim().toUpperCase();
+    const calc=new Array(11).fill('');
+
+    if(isOrderRow && status!=='refunded'){
+      const sub=numf(g(iSub)), tot=numf(g(iTot)), created=g(iCre);
+      const baseP=sub/div, ivaP=sub-baseP;
+      const netShip=Math.max(0,tot-sub), baseE=netShip/div, ivaE=netShip-baseE;
+      const com=tot*COM+FIJA, neto=tot-com;
+      const q=quarter(created);
+      const intra = country && country!==OWN && EU.has(country);
+      calc[0]=q.t; calc[1]=q.d; calc[2]=round2(baseP); calc[3]=round2(ivaP);
+      calc[4]=round2(tot); calc[5]=round2(baseE); calc[6]=round2(ivaE);
+      calc[7]=round2(com); calc[8]=round2(neto); calc[9]=intra?'SÍ':'NO'; calc[10]=intra?country:'';
+      nOrders++; tBaseP+=baseP;tIvaP+=ivaP;tBaseE+=baseE;tIvaE+=ivaE;tCom+=com;tNeto+=neto;tSub+=sub;
+      if(q.t){ const s=byQuarter[q.t]||(byQuarter[q.t]={baseP:0,ivaP:0,baseE:0,ivaE:0,n:0}); s.baseP+=baseP;s.ivaP+=ivaP;s.baseE+=baseE;s.ivaE+=ivaE;s.n++; }
+      if(intra){ const c=byCountry[country]||(byCountry[country]={base:0,iva:0,tot:0,n:0}); c.base+=baseP+baseE;c.iva+=ivaP+ivaE;c.tot+=tot;c.n++; tIntraBase+=baseP+baseE;tIntraTot+=tot; }
+    }
+    // devoluciones (informativo)
+    const refAmt=numf(g(iRef)); if(refAmt>0) tRef+=refAmt;
+    // stock: por cada línea de un pedido NO devuelto
+    if(status!=='refunded'){
+      const name=fixEnc((g(iLn)||'').toString().trim());
+      if(name){ const qty=numf(g(iQty)), price=numf(g(iPr)); const p=byProduct[name]||(byProduct[name]={qty:0,rev:0}); p.qty+=qty; p.rev+=qty*price; }
+    }
+    pedidos.push(calc.concat(rawHeaders.map(hn=>{const val=r[hn];return val==null?'':val;})));
+  });
+
+  // hojas resumen
+  const Qorder=['1ºT','2ºT','3ºT','4ºT'];
+  const resumen=[['Trimestre','Base productos','IVA productos','Base envíos','IVA envíos','Base total','IVA a ingresar','Nº pedidos']];
+  let ty=Object.keys(byQuarter).map(k=>k.split('/')[1]).sort()[0]||'';
+  const qkeys=Object.keys(byQuarter).sort();
+  qkeys.forEach(k=>{const s=byQuarter[k];resumen.push([k,round2(s.baseP),round2(s.ivaP),round2(s.baseE),round2(s.ivaE),round2(s.baseP+s.baseE),round2(s.ivaP+s.ivaE),s.n]);});
+  resumen.push(['TOTAL',round2(tBaseP),round2(tIvaP),round2(tBaseE),round2(tIvaE),round2(tBaseP+tBaseE),round2(tIvaP+tIvaE),nOrders]);
+
+  const intra=[['País','Nº pedidos','Base imponible','IVA','Total']];
+  Object.keys(byCountry).sort().forEach(c=>{const x=byCountry[c];intra.push([c,x.n,round2(x.base),round2(x.iva),round2(x.tot)]);});
+  intra.push(['TOTAL UE (no-ES)',Object.values(byCountry).reduce((a,b)=>a+b.n,0),round2(tIntraBase),round2(Object.values(byCountry).reduce((a,b)=>a+b.iva,0)),round2(tIntraTot)]);
+
+  const stock=[['Producto','Uds vendidas','Ingresos brutos','Precio medio','Coste unitario','Beneficio bruto']];
+  let sQty=0,sRev=0;
+  Object.keys(byProduct).sort().forEach(n=>{const p=byProduct[n];sQty+=p.qty;sRev+=p.rev;stock.push([n,p.qty,round2(p.rev),round2(p.qty?p.rev/p.qty:0),'','']);});
+  stock.push(['TOTAL',sQty,round2(sRev),'','','']);
+
+  const ivaTotal=tIvaP+tIvaE, prodGross=tBaseP+tIvaP, envGross=tBaseE+tIvaE, fact=prodGross+envGross;
+  const benef=fact-ivaTotal-tCom;
+  const pyl=[
+    ['CUENTA DE RESULTADOS',''],
+    ['Ventas producto (IVA incl.)',round2(prodGross)],
+    ['Envíos cobrados (IVA incl.)',round2(envGross)],
+    ['Total facturado',round2(fact)],
+    ['IVA repercutido (a Hacienda)',round2(ivaTotal)],
+    ['Comisiones Shopify',round2(tCom)],
+    ['Devoluciones (informativo)',round2(tRef)],
+    ['Beneficio bruto (antes de gastos operativos)',round2(benef)],
+    ['',''],
+    ['Añade en el Excel tus gastos operativos, campañas y costes de producto para el beneficio neto.','']
+  ];
+
+  const params=[
+    ['PARÁMETROS','Valor','Nota'],
+    ['IVA',IVA,'21% general'],
+    ['Comisión Shopify',COM,'sobre el Total'],
+    ['Comisión fija (€)',FIJA,'por transacción'],
+    ['País propio',OWN,'excluido de intracomunitarias'],
+    ['Cuenta base producto','700',''],
+    ['Cuenta IVA repercutido','477.21',''],
+    ['Cuenta clientes','430','Total cobrado'],
+    ['Cuenta comisiones','626','']
+  ];
+
+  return {pedidos,resumen,intra,stock,pyl,params,
+    totals:{nOrders,base:tBaseP+tBaseE,iva:ivaTotal,com:tCom,neto:tNeto,fact,intra:tIntraTot,benef,
+            noProdInStock:Object.keys(byProduct).length,hasIntra:Object.keys(byCountry).length}};
+}
+
+// ---- ledger UI ----
+const money = n => n.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+function countUp(el,val,suffix){if(matchMedia('(prefers-reduced-motion: reduce)').matches){el.textContent=money(val);return;}const dur=550,t0=performance.now();function step(t){const k=Math.min(1,(t-t0)/dur);const e=1-Math.pow(1-k,3);el.textContent=(val*e).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';if(k<1)requestAnimationFrame(step);}requestAnimationFrame(step);}
+function renderLedger(b){
+  const T=b.totals;
+  $('lnum').textContent=T.nOrders+' pedidos';
+  countUp($('r_base'),T.base); countUp($('r_iva'),T.iva); countUp($('r_com'),T.com);
+  countUp($('r_neto'),T.neto); countUp($('r_fact'),T.fact); countUp($('r_intra'),T.intra); countUp($('r_benef'),T.benef);
+  const w=$('warn');
+  w.textContent = T.hasIntra ? 'Detectadas ventas intracomunitarias: revisa el régimen OSS (B2C) o la exención por NIF-VIES (B2B) en la hoja correspondiente.' : '';
+  w.style.display = T.hasIntra ? 'block':'none';
+  $('ledger').classList.add('show');
+  $('ledger').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+// ---- download ----
+$('download').addEventListener('click',()=>{
+  if(!built)return;
+  const wb=XLSX.utils.book_new();
+  const eur='#,##0.00" €"';
+  function add(name,aoa,moneyCols,pct){
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    const range=XLSX.utils.decode_range(ws['!ref']);
+    for(let R=1;R<=range.e.r;R++){
+      (moneyCols||[]).forEach(C=>{const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];if(cell&&typeof cell.v==='number')cell.z=eur;});
+      (pct||[]).forEach(C=>{const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];if(cell&&typeof cell.v==='number')cell.z='0.00%';});
+    }
+    XLSX.utils.book_append_sheet(wb,ws,name);
+    return ws;
+  }
+  add('PARAMETROS',built.params,[],[1]);
+  const wp=add('PEDIDOS',built.pedidos,[2,3,4,5,6,7,8]);
+  wp['!cols']=built.pedidos[0].map((h,i)=>({wch: i<11?14:16}));
+  add('RESUMEN_IVA_TRIMESTRAL',built.resumen,[1,2,3,4,5,6]);
+  add('INTRACOMUNITARIAS',built.intra,[2,3,4]);
+  const wsS=add('STOCK_PRODUCTOS',built.stock,[2,3,4,5]);
+  const nS=built.stock.length; // header + productos + TOTAL
+  for(let R=2;R<nS;R++){ wsS['F'+R]={t:'n',f:'IF(E'+R+'="","",C'+R+'-B'+R+'*E'+R+')',z:eur}; }
+  wsS['F'+nS]={t:'n',f:'SUM(F2:F'+(nS-1)+')',z:eur};
+  add('PYL_BENEFICIOS',built.pyl,[1]);
+  XLSX.writeFile(wb,'SHOPIFY_SAGE50_MAESTRO.xlsx');
+});
+</script>
+</body>
+</html>
