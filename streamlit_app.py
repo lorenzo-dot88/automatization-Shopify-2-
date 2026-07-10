@@ -18,6 +18,13 @@ EU = {'AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT'
 OWN = 'ES'
 EUR = '#,##0.00" €"'
 
+# Cabeceras estándar de un export de pedidos de Shopify (79 columnas, orden fijo).
+# Se usan como respaldo cuando el archivo llega SIN fila de cabeceras.
+CANON = ['Name', 'Email', 'Financial Status', 'Paid at', 'Fulfillment Status', 'Fulfilled at', 'Accepts Marketing', 'Currency', 'Subtotal', 'Shipping', 'Taxes', 'Total', 'Discount Code', 'Discount Amount', 'Shipping Method', 'Created at', 'Lineitem quantity', 'Lineitem name', 'Lineitem price', 'Lineitem compare at price', 'Lineitem sku', 'Lineitem requires shipping', 'Lineitem taxable', 'Lineitem fulfillment status', 'Billing Name', 'Billing Street', 'Billing Address1', 'Billing Address2', 'Billing Company', 'Billing City', 'Billing Zip', 'Billing Province', 'Billing Country', 'Billing Phone', 'Shipping Name', 'Shipping Street', 'Shipping Address1', 'Shipping Address2', 'Shipping Company', 'Shipping City', 'Shipping Zip', 'Shipping Province', 'Shipping Country', 'Shipping Phone', 'Notes', 'Note Attributes', 'Cancelled at', 'Payment Method', 'Payment Reference', 'Refunded Amount', 'Vendor', 'Outstanding Balance', 'Employee', 'Location', 'Device ID', 'Id', 'Tags', 'Risk Level', 'Source', 'Lineitem discount', 'Tax 1 Name', 'Tax 1 Value', 'Tax 2 Name', 'Tax 2 Value', 'Tax 3 Name', 'Tax 3 Value', 'Tax 4 Name', 'Tax 4 Value', 'Tax 5 Name', 'Tax 5 Value', 'Phone', 'Receipt Number', 'Duties', 'Billing Province Name', 'Shipping Province Name', 'Payment ID', 'Payment Terms Name', 'Next Payment Due At', 'Payment References']
+
+# Campos que necesita el cálculo (por si hay que resolverlos por posición)
+KEY_FIELDS = ['Financial Status', 'Subtotal', 'Total']
+
 
 def numf(v):
     """Convierte a número tolerando texto y formatos EU/US."""
@@ -61,8 +68,42 @@ def build_workbook(df, iva_pct, com_pct, fija):
     div = 1 + IVA
     cols = list(df.columns)
 
-    def g(row, name):
-        return row[name] if name in cols else ''
+    # --- Respaldo: si el archivo llegó SIN cabeceras (faltan los nombres clave)
+    #     pero tiene la estructura estándar de Shopify, se aplican los nombres
+    #     canónicos por posición. Así funciona con o sin fila de cabeceras. ---
+    restored = False
+    low = {str(c).strip().lower(): c for c in cols}
+
+    def by_name(field):
+        if field in cols:
+            return field
+        return low.get(field.lower())
+
+    if not all(by_name(k) for k in KEY_FIELDS):
+        # El archivo no trae los nombres clave -> respaldo por posición (orden Shopify)
+        if len(cols) >= 33:
+            cols = [CANON[i] if i < len(CANON) else str(cols[i]) for i in range(len(cols))]
+            df = df.copy()
+            df.columns = cols
+            low = {str(c).strip().lower(): c for c in cols}
+            restored = True
+        if not all((k in cols) for k in KEY_FIELDS):
+            raise ValueError(
+                "No reconozco este archivo como un export de pedidos de Shopify "
+                "(no encuentro columnas como 'Financial Status', 'Subtotal' o 'Total', "
+                "ni por nombre ni por posición). Exporta los pedidos desde Shopify "
+                "(Pedidos → Exportar) e inténtalo de nuevo."
+            )
+
+    # Mapa campo canónico -> columna real del archivo (exacta o insensible a mayúsculas)
+    FIELDS = ['Financial Status', 'Subtotal', 'Shipping', 'Total', 'Created at',
+              'Billing Country', 'Lineitem quantity', 'Lineitem name',
+              'Lineitem price', 'Refunded Amount']
+    COLMAP = {f: by_name(f) for f in FIELDS}
+
+    def g(row, field):
+        c = COLMAP.get(field)
+        return '' if c is None else row[c]
 
     calc_headers = ['TRIMESTRE', 'FECHA', 'BASE PROD (700)', 'IVA PROD (477.21)',
                     'TOTAL COBRADO (430)', 'BASE ENVÍO', 'IVA ENVÍO',
@@ -122,6 +163,12 @@ def build_workbook(df, iva_pct, com_pct, fija):
         pedidos.append(calc + raw)
 
     # ---- hojas resumen ----
+    if T['n'] == 0:
+        raise ValueError(
+            "El archivo se leyó, pero no encontré ningún pedido válido "
+            "(revisa que la columna de estado tenga 'paid' y que haya importes). "
+            "¿Seguro que es el export de pedidos de Shopify?"
+        )
     resumen = [['Trimestre', 'Base productos', 'IVA productos', 'Base envíos',
                 'IVA envíos', 'Base total', 'IVA a ingresar', 'Nº pedidos']]
     for k in sorted(byQ):
@@ -216,8 +263,41 @@ def build_workbook(df, iva_pct, com_pct, fija):
     bio.seek(0)
     totals = dict(n=T['n'], iva=iva_total, com=T['com'], neto=T['neto'],
                   fact=fact, benef=benef, intra=T['intraTot'], ref=T['ref'],
-                  prod=prod_gross, env=env_gross, hasIntra=len(byC))
+                  prod=prod_gross, env=env_gross, hasIntra=len(byC), restored=restored)
     return bio.getvalue(), totals
+
+
+def read_orders(filename, raw_bytes):
+    """Lee un export de Shopify (.csv o .xlsx) de forma robusta:
+    detecta codificación y delimitador del CSV, y elimina filas vacías."""
+    import io as _io
+    name = str(filename).lower()
+    if name.endswith('.csv') or name.endswith('.txt'):
+        text = None
+        for enc in ('utf-8-sig', 'utf-8', 'cp1252', 'latin-1'):
+            try:
+                text = raw_bytes.decode(enc)
+                break
+            except Exception:
+                continue
+        if text is None:
+            text = raw_bytes.decode('utf-8', errors='replace')
+        import csv as _csv
+        # Detecta el delimitador probando cuál genera más columnas en la 1ª fila
+        sep, best = ',', 0
+        for cand in (',', ';', '\t', '|'):
+            try:
+                first = next(_csv.reader(_io.StringIO(text), delimiter=cand))
+                if len(first) > best:
+                    best, sep = len(first), cand
+            except Exception:
+                continue
+        df = pd.read_csv(_io.StringIO(text), dtype=str, keep_default_na=False, sep=sep)
+    else:
+        df = pd.read_excel(_io.BytesIO(raw_bytes), dtype=str).fillna('')
+    df.columns = [str(c).strip() for c in df.columns]
+    df = df[~df.apply(lambda row: all(str(x).strip() == '' for x in row), axis=1)]
+    return df.reset_index(drop=True)
 
 
 # =========================== UI de Streamlit ===========================
@@ -239,38 +319,33 @@ st.caption("La comisión se aplica sobre el Total. El envío se computa por lo r
 
 if up is not None:
     try:
-        if up.name.lower().endswith('.csv'):
-            df = pd.read_csv(up, dtype=str, keep_default_na=False)
-        else:
-            df = pd.read_excel(up, dtype=str).fillna('')
-        df.columns = [str(c).strip() for c in df.columns]
+        df = read_orders(up.name, up.getvalue())
 
-        if 'Name' not in df.columns or 'Total' not in df.columns:
-            st.error('No parece un export de pedidos de Shopify (faltan columnas como '
-                     '"Name" o "Total").')
-        else:
-            data, T = build_workbook(df, iva, com, fija)
-            st.success(f"Procesados {T['n']} pedidos.")
+        data, T = build_workbook(df, iva, com, fija)
+        if T.get('restored'):
+            st.info("El archivo venía sin fila de cabeceras; he aplicado el formato "
+                    "estándar de Shopify por posición de columna.")
+        st.success(f"Procesados {T['n']} pedidos.")
 
-            m1, m2, m3 = st.columns(3)
-            m1.metric("IVA a ingresar (Modelo 303)", f"{T['iva']:,.2f} €")
-            m2.metric("Total facturado", f"{T['fact']:,.2f} €")
-            m3.metric("Beneficio bruto", f"{T['benef']:,.2f} €")
-            m4, m5, m6 = st.columns(3)
-            m4.metric("Ventas producto", f"{T['prod']:,.2f} €")
-            m5.metric("Comisiones Shopify", f"{T['com']:,.2f} €")
-            m6.metric("Ventas intracomunitarias", f"{T['intra']:,.2f} €")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("IVA a ingresar (Modelo 303)", f"{T['iva']:,.2f} €")
+        m2.metric("Total facturado", f"{T['fact']:,.2f} €")
+        m3.metric("Beneficio bruto", f"{T['benef']:,.2f} €")
+        m4, m5, m6 = st.columns(3)
+        m4.metric("Ventas producto", f"{T['prod']:,.2f} €")
+        m5.metric("Comisiones Shopify", f"{T['com']:,.2f} €")
+        m6.metric("Ventas intracomunitarias", f"{T['intra']:,.2f} €")
 
-            if T['hasIntra']:
-                st.info("Detectadas ventas intracomunitarias: revisa el régimen OSS (B2C) "
-                        "o la exención por NIF-VIES (B2B) en la hoja INTRACOMUNITARIAS.")
+        if T['hasIntra']:
+            st.info("Detectadas ventas intracomunitarias: revisa el régimen OSS (B2C) "
+                    "o la exención por NIF-VIES (B2B) en la hoja INTRACOMUNITARIAS.")
 
-            st.download_button(
-                "⬇️ Descargar SHOPIFY_SAGE50_MAESTRO.xlsx",
-                data=data,
-                file_name="SHOPIFY_SAGE50_MAESTRO.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
+        st.download_button(
+            "⬇️ Descargar SHOPIFY_SAGE50_MAESTRO.xlsx",
+            data=data,
+            file_name="SHOPIFY_SAGE50_MAESTRO.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
     except Exception as e:
         st.error(f"No pude procesar el archivo: {e}")
 
