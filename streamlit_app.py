@@ -96,7 +96,7 @@ def build_workbook(df, iva_pct, com_pct, fija):
             )
 
     # Mapa campo canónico -> columna real del archivo (exacta o insensible a mayúsculas)
-    FIELDS = ['Financial Status', 'Subtotal', 'Shipping', 'Total', 'Created at',
+    FIELDS = ['Name', 'Financial Status', 'Subtotal', 'Shipping', 'Total', 'Created at',
               'Billing Country', 'Lineitem quantity', 'Lineitem name',
               'Lineitem price', 'Refunded Amount']
     COLMAP = {f: by_name(f) for f in FIELDS}
@@ -105,7 +105,7 @@ def build_workbook(df, iva_pct, com_pct, fija):
         c = COLMAP.get(field)
         return '' if c is None else row[c]
 
-    calc_headers = ['TRIMESTRE', 'FECHA', 'BASE PROD (700)', 'IVA PROD (477.21)',
+    calc_headers = ['PEDIDO', 'TRIMESTRE', 'FECHA', 'BASE PROD (700)', 'IVA PROD (477.21)',
                     'TOTAL COBRADO (430)', 'BASE ENVÍO', 'IVA ENVÍO',
                     'COMISIÓN SHOPIFY', 'NETO RECIBIDO', 'INTRACOMUNITARIA', 'PAÍS UE']
     pedidos = [calc_headers + cols]
@@ -117,7 +117,8 @@ def build_workbook(df, iva_pct, com_pct, fija):
     for _, r in df.iterrows():
         status = str(g(r, 'Financial Status') or '').strip().lower()
         country = str(g(r, 'Billing Country') or '').strip().upper()
-        calc = [''] * 11
+        pedido = str(g(r, 'Name') or '').strip()   # nº de pedido (#1013)
+        calc = [pedido] + [''] * 11
 
         if status != '' and status != 'refunded':
             sub = numf(g(r, 'Subtotal'))
@@ -131,7 +132,7 @@ def build_workbook(df, iva_pct, com_pct, fija):
             neto = tot - com
             qt, dt = quarter(g(r, 'Created at'))
             intra = bool(country) and country != OWN and country in EU
-            calc = [qt, dt, baseP, ivaP, tot, baseE, ivaE, com, neto,
+            calc = [pedido, qt, dt, baseP, ivaP, tot, baseE, ivaE, com, neto,
                     ('SÍ' if intra else 'NO'), (country if intra else '')]
             T['n'] += 1
             T['baseP'] += baseP; T['ivaP'] += ivaP
@@ -242,9 +243,9 @@ def build_workbook(df, iva_pct, com_pct, fija):
         return ws
 
     add('PARAMETROS', params, pct=(1,))
-    wp = add('PEDIDOS', pedidos, money=(2, 3, 4, 5, 6, 7, 8))
+    wp = add('PEDIDOS', pedidos, money=(3, 4, 5, 6, 7, 8, 9))
     for ci in range(1, len(pedidos[0]) + 1):
-        wp.column_dimensions[wp.cell(row=1, column=ci).column_letter].width = 14 if ci <= 11 else 16
+        wp.column_dimensions[wp.cell(row=1, column=ci).column_letter].width = 14 if ci <= 12 else 16
     add('RESUMEN_IVA_TRIMESTRAL', resumen, money=(1, 2, 3, 4, 5, 6))
     add('INTRACOMUNITARIAS', intra, money=(2, 3, 4))
 
